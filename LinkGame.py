@@ -1,13 +1,12 @@
-from typing import Sequence
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import numpy as np
 from copy import deepcopy
 
 from numpy.random import shuffle
 from utils import *
-import time
 import math
 import random
-
 
 class Node(object):  # Represents a node in a search tree
     def __init__(self, state, parent=None, action=None, g_cost=0, h_cost=0):
@@ -101,14 +100,19 @@ class Problem(object):
 class LinkGame(Problem):
 
     def __init__(self, height, width, kinds):
-        #init_state = self.generate_borad(height, width, kinds)
-        #goal_state = self.generate_borad(empty=True)
         self.height = height
         self.width = width
         self.kinds = kinds
+        # generate random initial board
+        init_state = self.generateBorad(empty=False)
+        # generate empty ultimate board
+        goal_state = self.generateBorad()
+        # contain positions of all different blocks
         self.poslist = list()
+        # initial poslist by function sliceBoard
+        self.sliceBoard(init_state)
 
-        #super().__init__(init_state, goal_state)
+        super().__init__(init_state, goal_state)
 
 
     def generateBorad(self, empty=True):
@@ -161,7 +165,9 @@ class LinkGame(Problem):
     def sliceBoard(self, state):
         # 0号即空位置
         # 寻找第 idx 号图案的位置
-        for idx in range(0, self.kinds + 1):
+        # do not find zero element
+        self.poslist.append([])
+        for idx in range(1, self.kinds + 1):
             curr_list = []
             corres_rows = np.where(np.array(state) == idx)[0]
             corres_cols = np.where(np.array(state) == idx)[1]
@@ -175,12 +181,24 @@ class LinkGame(Problem):
             self.poslist.append(curr_list)
     
 
-    # 该位置是否在棋盘内部（不包括周围一圈）
-    def isInsideBoard(self, pos):
+    # judge if one step in given direction is still in the board
+    def isInsideBoard(self, pos, dir):
+        UP=0
+        RIGHT=1
+        DOWN=2
+        LEFT=3
+
         (x, y) = pos
         h = self.height + 2
         w = self.width + 2
-        return (x > 0) and (x < h - 1) and (y > 0) and (y < w - 1)
+        if dir == UP:
+            return x > 0
+        elif dir == RIGHT:
+            return y < w - 1
+        elif dir == DOWN:
+            return x < h - 1
+        elif dir == LEFT:
+            return y > 0
 
 
     # 找当前给定的块到相同图案的其它块的折数
@@ -190,7 +208,7 @@ class LinkGame(Problem):
         # 扩展过的棋盘大小
         h = state.shape[0]
         w = state.shape[1]
-        turn_cnt_map = np.zeros((h, w))
+        turn_cnt_map = np.zeros((h, w), dtype=int)
         # 由于我的设置是 -1 表示 EMPTY
         # 所有 map 所有元素减去 1
         turn_cnt_map -= 1
@@ -200,6 +218,7 @@ class LinkGame(Problem):
         EMPTY = -1
         OTHER = -2
         SAME = -3
+        SELF = -4
         # 大于等于 0 的块显示的是折数
 
         for idx in range(1, self.kinds + 1):
@@ -213,13 +232,17 @@ class LinkGame(Problem):
                 for (x, y) in self.poslist[idx]:
                     turn_cnt_map[x, y] = OTHER
             # 空位置还是 -1
+        # this place is the start block
+        turn_cnt_map[pos[0], pos[1]] = SELF
         
+        print(turn_cnt_map)
 
         # 每个折数的方块位置的列表
         # 这里只保存某个折数的空方块
         all_turn_intermd = []
+        
         # 首先将初始块的位置加入列表中
-        all_turn_intermd.append([pos])
+
         # 每个折数对应的相同的块的位置
         all_turn_target = []
 
@@ -228,16 +251,22 @@ class LinkGame(Problem):
 
         for turn_cnt in range(3):
             # 遍历当前折数的所有位置
+
             # 第一次循环时就只有初始块
-            for curr_turn_pos in all_turn_intermd[turn_cnt]:
+            if turn_cnt == 0:
+                pre_turn_intermd = [pos]
+            else:
+                pre_turn_intermd = all_turn_intermd[turn_cnt - 1]
+
+            for curr_turn_pos in pre_turn_intermd:
                 new_turn_intermd = []
                 new_turn_target = []
 
                 # 尝试向 4 个方向扩展
                 for dir in range(4):
                     (x, y) = curr_turn_pos
-                    # 是否在棋盘内部
-                    while (self.isInsideBoard((x, y))):
+                    # can move in this direction or not
+                    while (self.isInsideBoard((x, y), dir)):
                         # 向指定方向移动
                         x += dx[dir]
                         y += dy[dir]
@@ -247,15 +276,23 @@ class LinkGame(Problem):
                             new_turn_intermd.append((x, y))
                         # 是相同的块，将其加入 turn_target 中，停止
                         elif turn_cnt_map[x, y] == SAME:
+                            print("add SAME block, pos = ", x, y)
+                            print("turn_cnt = ", turn_cnt)
                             new_turn_target.append((x, y))
                             break
                         # 是不同的块，停止
-                        elif turn_cnt_map[x, y] == OTHER:
+                        # or encounter the start point
+                        elif turn_cnt_map[x, y] == OTHER \
+                            or turn_cnt_map[x, y] == SELF:
                             break
                         # 遇到了标记过折数的的空块，不再重复标记
                         # 但是不停止，而是继续向当前方向行进
                         elif turn_cnt_map[x, y] >= 0:
                             pass
+            
+            print("turn cnt = ", turn_cnt)
+            print(turn_cnt_map)
+            print("")
 
             all_turn_intermd.append(new_turn_intermd)
             all_turn_target.append(new_turn_target)
@@ -265,6 +302,8 @@ class LinkGame(Problem):
 
     def actions(self, state):
         max_turns = 2
+        # each dimension of this list contains pairs of two block
+        # that are able to eliminate with each other
         all_turn_pairs = [[] for i in range(max_turns + 1)]
 
         # 遍历每一种图案
@@ -281,51 +320,95 @@ class LinkGame(Problem):
                         # 将待消两块组合起来
                         pos_pair = (start_pos, end_pos)
                         rev_pos_pair = (end_pos, start_pos)
-                        # 如果逾期与其对位的那个点没有先把
+                        # 如果与其对位的那个点没有先把...
+                        # if this pair has not been put into pairList
                         if rev_pos_pair not in all_turn_pairs[turn]:
                             # 加入到可执行动作列表中
                             all_turn_pairs[turn].append(pos_pair)
-        
-
-                    
-
-
-
                 
-        pass
+        return all_turn_pairs
 
 
-    def move(self, action):
-        pass
+    def move(self, state, action):
+        # pretend that action = (((x1, y1), (x2, y2)), turn)
+        (((x1, y1), (x2, y2)), turn) = action
+        # delete element in poslist
+        self.poslist[state[x1, y1]].pop((x1, y1))
+        self.poslist[state[x2, y2]].pop((x2, y2))
+        # change state
+        new_state = deepcopy(state)
+        # the two positions are now empty
+        new_state[x1, y1] = 0
+        new_state[x2, y2] = 0
 
-
-
+        return new_state
+        
 
     def is_goal(self, state):
         return state == self.goal_node.state
 
     def g(self, g_cost, from_state, action, to_state):
-        return g_cost + 1
+        (pair, turn) = action
+        return g_cost + turn + 1
     
     def h(self, this_state):
         h_cost = 0
         goal_state = self.goal_node.state
-        for row1 in range(self.n):
-            for col1 in range(self.n):
-                num = this_state[row1][col1]
-                row2 = np.where(np.array(goal_state) == num)[0][0]
-                col2 = np.where(np.array(goal_state) == num)[1][0]
-                h_cost += abs(row1 - row2) + abs(col1 - col2)
+        for idx in range(1, self.kinds + 1):
+            for curr_pos in self.poslist[idx]:
+                (x, y) = curr_pos
         return h_cost
 
-def DFS(problem):
-    pass
+
+def DFS(problem, state, path):
+    # completed, all blocks have been eliminated
+    # now the board is empty
+    if state == problem.goal_node.state:
+        return True
+
+    actions = problem.actions(state)
+    
+    for action in actions:
+        new_state = problem.move(state, action)
+        # add temp action to path
+        res = DFS(problem, new_state, path.append(action))
+        # if already found a way to eliminate all blocks
+        # than do not try other ways
+        if res == True:
+            return True
+        else:
+            # if this action can not lead to goal, then drop it
+            path.pop(action)
+
+    return False
+
+
 
 
 if __name__ == "__main__":
 
     problem = LinkGame(4, 6, 5)
+    
 
+    #solution_path = []
+    #res = DFS(problem, problem.init_node.state, solution_path)
+
+
+    print(problem.init_node.state, "\n")
+
+    init_state = problem.init_node.state
+    
+    for ele in problem.poslist:
+        print(ele)
+
+    print("")
+    
+    all_turn_target = problem.findPath(1, problem.poslist[1][0], init_state)
+    for turn in range(3):
+        print(all_turn_target[turn])
+
+
+    '''
     state = problem.generateBorad(empty=False)
     print(state)
 
@@ -334,3 +417,4 @@ if __name__ == "__main__":
         print("idx = ", idx)
         print(problem.poslist[idx])
     pass
+    '''
