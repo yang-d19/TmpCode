@@ -261,15 +261,36 @@ class LinkGame(Problem):
             all_turn_target.append(new_turn_target)
 
         return all_turn_target
-        
-        
 
 
     def actions(self, state):
+        max_turns = 2
+        all_turn_pairs = [[] for i in range(max_turns + 1)]
+
         # 遍历每一种图案
         for idx in range(1, self.kinds + 1):
-            for pos_start in self.poslist[idx]:
-                target_lists = self.findPath(idx, pos_start, state)
+            # 对于该种图案的每个位置
+            for start_pos in self.poslist[idx]:
+                # 找到所有可以和当前块消的位置
+                all_turn_target = self.findPath(idx, start_pos, state)
+                # 遍历每一个折数
+                for turn in range(len(all_turn_target)):
+                    curr_turn_target = all_turn_target[turn]
+                    # 遍历该折数对应的所有终止点
+                    for end_pos in curr_turn_target:
+                        # 将待消两块组合起来
+                        pos_pair = (start_pos, end_pos)
+                        rev_pos_pair = (end_pos, start_pos)
+                        # 如果逾期与其对位的那个点没有先把
+                        if rev_pos_pair not in all_turn_pairs[turn]:
+                            # 加入到可执行动作列表中
+                            all_turn_pairs[turn].append(pos_pair)
+        
+
+                    
+
+
+
                 
         pass
 
