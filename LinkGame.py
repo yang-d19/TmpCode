@@ -7,45 +7,39 @@ from numpy.random import shuffle
 from utils import *
 import math
 import random
+from Display import *
+
+
 
 class Node(object):  # Represents a node in a search tree
     def __init__(self, state, parent=None, action=None, g_cost=0, h_cost=0):
         self.state = state
         self.parent = parent
         self.action = action
-        self.g_cost = g_cost
-        self.h_cost = h_cost
+        self.g_cost = g_cost  # true cost
+        self.h_cost = h_cost  # heuristic score
         self.path_cost = g_cost + h_cost
         self.depth = 0
         if parent:
             self.depth = parent.depth + 1
 
-    def child_node_with_heuristic(self, problem, action):
+    def child_node(self, problem, action, move_cost):
         next_state = problem.move(self.state, action)
         next_node = Node(next_state, self, action,
-                         problem.g(self.g_cost, self.state, action, next_state),
+                         problem.g(self.g_cost, move_cost),
                          problem.h(self.state)
                          )
         return next_node
 
-    
-    def child_node_no_heuristic(self, problem, action):
-        next_state = problem.move(self.state, action)
-        next_node = Node(next_state, self, action,
-                         problem.g(self.g_cost, self.state, action, next_state),
-                         0
-                         )
-        return next_node
 
     def path(self):
-        """
-        Returns list of nodes from this node to the root node
-        """
+        # Returns list of nodes from this node to the root node
         node, path_back = self, []
         while node:
             path_back.append(node)
             node = node.parent
         return list(reversed(path_back))
+
 
     def __repr__(self):
         return "<Node {}(g={})>".format(self.state, self.path_cost)
@@ -62,12 +56,10 @@ class Problem(object):
         self.init_node = Node(init_state)
         self.goal_node = Node(goal_state)
 
-    def actions(self, state):
-        """
-        Given the current state, return valid actions.
-        :param state:
-        :return: valid actions
-        """
+    def actions(self, state): 
+        # Given the current state, return valid actions.
+        # :param state:
+        # :return: valid actions
         pass
 
     def move(self, state, action):
@@ -76,25 +68,30 @@ class Problem(object):
     def is_goal(self, state):
         pass
 
-    def g(self, cost, from_state, action, to_state):
+    def g(self, prev_cost, move_cost):
         pass
     
-    def h(self, this_state):
+    def h(self, state):
         pass
 
     def solution(self, goal):
-        """
-        Returns actions from this node to the root node
-        """
+        # Returns actions from this node to the root node
         if goal.state is None:
             return None
         return [node.action for node in goal.path()[1:]]
 
-    def expand_with_heuristic(self, node):  # Returns a list of child nodes
-        return [node.child_node_with_heuristic(self, action) for action in self.actions(node.state)]
+    def expand_childnodes(self, node: Node): 
+        # Returns a list of child nodes
+        child_nodes = []
 
-    def expand_no_heuristic(self, node):  # Returns a list of child nodes
-        return [node.child_node_no_heuristic(self, action) for action in self.actions(node.state)]
+        all_turn_pairs = self.actions(node.state)
+
+        for turn in range(len(all_turn_pairs)):
+            curr_turn_pairs = all_turn_pairs[turn]
+            for action in curr_turn_pairs:
+                child_nodes.append(node.child_node(self, action, turn))
+
+        # return [node.child_node(self, action) for action in self.actions(node.state)]
     
 
 class LinkGame(Problem):
@@ -111,6 +108,8 @@ class LinkGame(Problem):
         self.poslist = list()
         # initial poslist by function sliceBoard
         self.sliceBoard(init_state)
+        # 最大转折数
+        self.max_turns = 2
 
         super().__init__(init_state, goal_state)
 
@@ -123,8 +122,6 @@ class LinkGame(Problem):
         # 生成空棋盘
         if empty == True:
             return full_board
-
-        # print(board.shape[0], board.shape[1])
 
         seq = list()
         # 棋盘总块数
@@ -159,7 +156,6 @@ class LinkGame(Problem):
         full_board[1: self.height + 1, 1: self.width + 1] = board
 
         return full_board
-        # return full_board.tolist()
     
 
     def sliceBoard(self, state):
@@ -183,14 +179,15 @@ class LinkGame(Problem):
 
     # judge if one step in given direction is still in the board
     def isInsideBoard(self, pos, dir):
-        UP=0
-        RIGHT=1
-        DOWN=2
-        LEFT=3
+        UP    = 0
+        RIGHT = 1
+        DOWN  = 2
+        LEFT  = 3
 
         (x, y) = pos
         h = self.height + 2
         w = self.width + 2
+
         if dir == UP:
             return x > 0
         elif dir == RIGHT:
@@ -208,17 +205,19 @@ class LinkGame(Problem):
         # 扩展过的棋盘大小
         h = state.shape[0]
         w = state.shape[1]
+        # 存储转折数的矩阵
         turn_cnt_map = np.zeros((h, w), dtype=int)
         # 由于我的设置是 -1 表示 EMPTY
-        # 所有 map 所有元素减去 1
+        # 所以所有 map 所有元素减去 1，这样初始就是全空棋盘
         turn_cnt_map -= 1
 
         # const variable
         # 特殊块都是小于 0 的
-        EMPTY = -1
-        OTHER = -2
-        SAME = -3
-        SELF = -4
+        EMPTY  = -1  # 空
+        OTHER  = -2  # 不同的块
+        SAME   = -3  # 同图案的块
+        SELF   = -4  # 初始块
+        FINDED = -5  # 已经被找到的块
         # 大于等于 0 的块显示的是折数
 
         for idx in range(1, self.kinds + 1):
@@ -234,33 +233,33 @@ class LinkGame(Problem):
             # 空位置还是 -1
         # this place is the start block
         turn_cnt_map[pos[0], pos[1]] = SELF
-        
-        print(turn_cnt_map)
 
         # 每个折数的方块位置的列表
         # 这里只保存某个折数的空方块
         all_turn_intermd = []
-        
-        # 首先将初始块的位置加入列表中
-
         # 每个折数对应的相同的块的位置
         all_turn_target = []
 
+        # 分别是上、下、左、右四个方向
         dx = [-1, 0, 1, 0]
         dy = [0, 1, 0, -1]
 
+        # turn_cnt 从 0 到 2
         for turn_cnt in range(3):
             # 遍历当前折数的所有位置
 
-            # 第一次循环时就只有初始块
+            # 转折数为 0 的一定是从初始块开始的
             if turn_cnt == 0:
                 pre_turn_intermd = [pos]
             else:
+                # 转折数为 n 的块一定是由转折数为 n-1 的块走直线得到的
                 pre_turn_intermd = all_turn_intermd[turn_cnt - 1]
+            
+            # 从当前转折数的块上走出来的转折数加一的块的位置
+            new_turn_intermd = []
+            new_turn_target = []
 
             for curr_turn_pos in pre_turn_intermd:
-                new_turn_intermd = []
-                new_turn_target = []
 
                 # 尝试向 4 个方向扩展
                 for dir in range(4):
@@ -270,18 +269,23 @@ class LinkGame(Problem):
                         # 向指定方向移动
                         x += dx[dir]
                         y += dy[dir]
-                        # 为空，可以走
+                        # 为空，在 turn_cnt_map 图上留下标记
+                        # 将当前位置加入 new_turn_intermd，
+                        # 继续尝试向该方向走
                         if turn_cnt_map[x, y] == EMPTY:
                             turn_cnt_map[x, y] = turn_cnt
                             new_turn_intermd.append((x, y))
-                        # 是相同的块，将其加入 turn_target 中，停止
+                        # 是相同的块，将其加入 turn_target 中，
+                        # turn_cnt_map 标记该块为已访问
+                        # 停止
                         elif turn_cnt_map[x, y] == SAME:
-                            print("add SAME block, pos = ", x, y)
-                            print("turn_cnt = ", turn_cnt)
+                            # print("add SAME block, pos = ", x, y)
+                            # print("turn_cnt = ", turn_cnt)
+                            turn_cnt_map[x, y] = FINDED
                             new_turn_target.append((x, y))
                             break
-                        # 是不同的块，停止
-                        # or encounter the start point
+                        # 是不同的块，或是初始块，或是已经访问到的块
+                        # 停止该方向的前进
                         elif turn_cnt_map[x, y] == OTHER \
                             or turn_cnt_map[x, y] == SELF:
                             break
@@ -289,14 +293,14 @@ class LinkGame(Problem):
                         # 但是不停止，而是继续向当前方向行进
                         elif turn_cnt_map[x, y] >= 0:
                             pass
-            
-            print("turn cnt = ", turn_cnt)
-            print(turn_cnt_map)
-            print("")
 
             all_turn_intermd.append(new_turn_intermd)
             all_turn_target.append(new_turn_target)
 
+            # print("turn_cnt = ", turn_cnt)
+            # print("\nintermedium: \n", new_turn_intermd)
+            # print("\ntargets: \n", new_turn_target)
+            # print("\nturn cnt map: \n", turn_cnt_map)
         return all_turn_target
 
 
@@ -330,11 +334,14 @@ class LinkGame(Problem):
 
 
     def move(self, state, action):
-        # pretend that action = (((x1, y1), (x2, y2)), turn)
-        (((x1, y1), (x2, y2)), turn) = action
+
+        (((x1, y1), (x2, y2))) = action
+
+        assert state[x1, y1] == state[x2, y2], "消除的两个方块不是同一种类"
+        block_type = state[x1, y1]
         # delete element in poslist
-        self.poslist[state[x1, y1]].pop((x1, y1))
-        self.poslist[state[x2, y2]].pop((x2, y2))
+        self.poslist[block_type].pop(self.poslist[block_type].index((x1, y1)))
+        self.poslist[block_type].pop(self.poslist[block_type].index((x2, y2)))
         # change state
         new_state = deepcopy(state)
         # the two positions are now empty
@@ -345,40 +352,51 @@ class LinkGame(Problem):
         
 
     def is_goal(self, state):
-        return state == self.goal_node.state
+        return (state == self.goal_node.state).all()
 
-    def g(self, g_cost, from_state, action, to_state):
-        (pair, turn) = action
-        return g_cost + turn + 1
+    def g(self, pre_cost, move_cost):
+        # move cost 即为转折数，为防止路径代价不增
+        # 当前步代价视为转折数加一
+        return pre_cost + move_cost + 1
     
-    def h(self, this_state):
+    def h(self, state):
+        # 不使用启发式函数 h 时，A*算法就是一致代价搜索
         h_cost = 0
-        goal_state = self.goal_node.state
-        for idx in range(1, self.kinds + 1):
-            for curr_pos in self.poslist[idx]:
-                (x, y) = curr_pos
+        # goal_state = self.goal_node.state
+
+        # for idx in range(1, self.kinds + 1):
+            
         return h_cost
 
 
-def DFS(problem, state, path):
+def DFS(problem: LinkGame, state, path):
     # completed, all blocks have been eliminated
     # now the board is empty
-    if state == problem.goal_node.state:
+    if problem.is_goal(state):
         return True
 
-    actions = problem.actions(state)
-    
-    for action in actions:
-        new_state = problem.move(state, action)
-        # add temp action to path
-        res = DFS(problem, new_state, path.append(action))
-        # if already found a way to eliminate all blocks
-        # than do not try other ways
-        if res == True:
-            return True
-        else:
-            # if this action can not lead to goal, then drop it
-            path.pop(action)
+    all_turn_pairs = problem.actions(state)
+
+    for turn in range(len(all_turn_pairs)):
+
+        block_pairs = all_turn_pairs[turn]
+
+        for action in block_pairs:
+            # 因为 move 函数中使用了 deepcopy 深拷贝
+            # 当前的 new_state 和旧的 state 互不干扰
+            new_state = problem.move(state, action)
+            # add temp action to path
+            path.append(action)
+            # 递归寻找下一对可以消除的方块
+            res = DFS(problem, new_state, path)
+            # if already found a way to eliminate all blocks
+            # than do not try other ways
+            if res == True:
+                return True
+            else:
+                # 去除不可行的行动
+                # new_state 和 state 独立，不要变
+                path.pop(-1)
 
     return False
 
@@ -388,33 +406,61 @@ def DFS(problem, state, path):
 if __name__ == "__main__":
 
     problem = LinkGame(4, 6, 5)
+
+    # ----- DFS -----    
+    # solution_path = []
+    # res = DFS(problem, problem.init_node.state, solution_path)
+    # if res == True:
+    #     print("Solution found")
+    #     Display(problem.init_node.state, solution_path)
+    # else:
+    #     print("Can't find a way to eliminate all blocks")
+    # ----- END -----
+
+    
+    
     
 
-    #solution_path = []
-    #res = DFS(problem, problem.init_node.state, solution_path)
 
-
-    print(problem.init_node.state, "\n")
-
-    init_state = problem.init_node.state
+    # init_state = problem.init_node.state
     
-    for ele in problem.poslist:
-        print(ele)
 
-    print("")
+
+    # ----- DEBUG -----
+    # print(problem.init_node.state, "\n")
+    # for ele in problem.poslist:
+    #     print(ele)
+    # print("")
+    # ----- END -----
     
-    all_turn_target = problem.findPath(1, problem.poslist[1][0], init_state)
-    for turn in range(3):
-        print(all_turn_target[turn])
+    # all_turn_target = problem.findPath(1, problem.poslist[1][0], init_state)
+
+    # block_pairs = problem.actions(init_state)
 
 
-    '''
-    state = problem.generateBorad(empty=False)
-    print(state)
 
-    problem.sliceBoard(state)
-    for idx in range(problem.kinds + 1):
-        print("idx = ", idx)
-        print(problem.poslist[idx])
-    pass
-    '''
+
+    # ----- DEBUG -----
+    # for turn in range(3):
+    #     print(block_pairs[turn])
+    # ----- END -----
+
+    
+
+
+    # ----- DEBUG -----
+    # print("")
+    # for turn in range(len(all_turn_target)):
+    #     print(all_turn_target[turn])
+    # ------ END -----
+
+
+    # ----- DEBUG -----
+    # state = problem.generateBorad(empty=False)
+    # print(state)
+    # problem.sliceBoard(state)
+    # for idx in range(problem.kinds + 1):
+    #     print("idx = ", idx)
+    #     print(problem.poslist[idx])
+    # pass
+    # ------ END -----
