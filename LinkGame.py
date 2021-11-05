@@ -8,7 +8,7 @@ from utils import *
 import math
 import random
 from Display import *
-
+from heapq import *
 
 
 class Node(object):  # Represents a node in a search tree
@@ -74,7 +74,7 @@ class Problem(object):
     def h(self, state):
         pass
 
-    def solution(self, goal):
+    def solution(self, goal: Node):
         # Returns actions from this node to the root node
         if goal.state is None:
             return None
@@ -86,13 +86,15 @@ class Problem(object):
 
         all_turn_pairs = self.actions(node.state)
 
+        # 遍历所有转折数
         for turn in range(len(all_turn_pairs)):
             curr_turn_pairs = all_turn_pairs[turn]
+            # 当前转折数的所有 action
             for action in curr_turn_pairs:
                 child_nodes.append(node.child_node(self, action, turn))
+        
+        return child_nodes
 
-        # return [node.child_node(self, action) for action in self.actions(node.state)]
-    
 
 class LinkGame(Problem):
 
@@ -105,7 +107,7 @@ class LinkGame(Problem):
         # generate empty ultimate board
         goal_state = self.generateBorad()
         # contain positions of all different blocks
-        self.poslist = list()
+        # self.poslist = list()
         # initial poslist by function sliceBoard
         self.sliceBoard(init_state)
         # 最大转折数
@@ -162,7 +164,8 @@ class LinkGame(Problem):
         # 0号即空位置
         # 寻找第 idx 号图案的位置
         # do not find zero element
-        self.poslist.append([])
+        poslist = []
+        poslist.append([])
         for idx in range(1, self.kinds + 1):
             curr_list = []
             corres_rows = np.where(np.array(state) == idx)[0]
@@ -174,7 +177,9 @@ class LinkGame(Problem):
                 col = corres_cols[i]
                 curr_list.append((row, col))
             # 当前图案的所有位置
-            self.poslist.append(curr_list)
+            poslist.append(curr_list)
+
+        return poslist
     
 
     # judge if one step in given direction is still in the board
@@ -220,15 +225,17 @@ class LinkGame(Problem):
         FINDED = -5  # 已经被找到的块
         # 大于等于 0 的块显示的是折数
 
+        poslist = self.sliceBoard(state)
+
         for idx in range(1, self.kinds + 1):
             # 是当前要找的同图案的块
             if idx == index:
-                for (x, y) in self.poslist[idx]:
+                for (x, y) in poslist[idx]:
                     # 在矩阵中用 -3 表示
                     turn_cnt_map[x, y] = SAME
             else:
                 # 其它颜色的块用 -2 表示
-                for (x, y) in self.poslist[idx]:
+                for (x, y) in poslist[idx]:
                     turn_cnt_map[x, y] = OTHER
             # 空位置还是 -1
         # this place is the start block
@@ -310,10 +317,12 @@ class LinkGame(Problem):
         # that are able to eliminate with each other
         all_turn_pairs = [[] for i in range(max_turns + 1)]
 
+        poslist = self.sliceBoard(state)
+
         # 遍历每一种图案
         for idx in range(1, self.kinds + 1):
             # 对于该种图案的每个位置
-            for start_pos in self.poslist[idx]:
+            for start_pos in poslist[idx]:
                 # 找到所有可以和当前块消的位置
                 all_turn_target = self.findPath(idx, start_pos, state)
                 # 遍历每一个折数
@@ -337,11 +346,11 @@ class LinkGame(Problem):
 
         (((x1, y1), (x2, y2))) = action
 
-        assert state[x1, y1] == state[x2, y2], "消除的两个方块不是同一种类"
-        block_type = state[x1, y1]
+        # assert state[x1, y1] == state[x2, y2], "消除的两个方块不是同一种类"
+        # block_type = state[x1, y1]
         # delete element in poslist
-        self.poslist[block_type].pop(self.poslist[block_type].index((x1, y1)))
-        self.poslist[block_type].pop(self.poslist[block_type].index((x2, y2)))
+        # self.poslist[block_type].pop(self.poslist[block_type].index((x1, y1)))
+        # self.poslist[block_type].pop(self.poslist[block_type].index((x2, y2)))
         # change state
         new_state = deepcopy(state)
         # the two positions are now empty
@@ -360,11 +369,12 @@ class LinkGame(Problem):
         return pre_cost + move_cost + 1
     
     def h(self, state):
-        # 不使用启发式函数 h 时，A*算法就是一致代价搜索
+        # 不使用启发式函数 h 时，A* 算法就是一致代价搜索
         h_cost = 0
         # goal_state = self.goal_node.state
 
         # for idx in range(1, self.kinds + 1):
+        
             
         return h_cost
 
@@ -400,12 +410,57 @@ def DFS(problem: LinkGame, state, path):
 
     return False
 
+# 将矩阵转为元组，使得其可哈希化
+def tuplify(state):
+    return tuple(np.array(state).flatten())
+
+
+def AStar(problem: LinkGame):
+    # 边缘集
+    frontier = [problem.init_node]
+    # 探索集
+    explored = Set()
+    # 堆化
+    heapify(frontier)
+
+    while len(frontier) != 0:
+        # 取估计代价最小的点拓展
+        tmp_node: Node = heappop(frontier)
+
+        # 因为拓展的节点加入小顶堆时不会判重，
+        # 堆中可能有多个状态相同，代价不同的节点，
+        # 所以 tmp_node 之前可能已经被探索过了，
+        # 这样的情况下，直接跳过当前节点，继续下一个循环
+        if explored.inset(tuplify(tmp_node.state)):
+            continue
+        
+        # 这是个没有被探索过的节点
+        explored.add(tuplify(tmp_node.state))
+
+        # print solution
+        if problem.is_goal(tmp_node.state):
+            print("Solution found")
+            return problem.solution(tmp_node)
+
+        # if this is not the goal, search for its child nodes
+        child_nodes = problem.expand_childnodes(tmp_node)
+
+        for new_node in child_nodes:
+            # do not add nodes that have already been visted
+            if not explored.inset(tuplify(new_node.state)):
+                heappush(frontier, new_node)
+
+    print("Solution not found")
 
 
 
 if __name__ == "__main__":
 
-    problem = LinkGame(4, 6, 5)
+    problem = LinkGame(5, 5, 4)
+
+    solution_path = AStar(problem)
+    Display(problem.init_node.state, solution_path)
+
 
     # ----- DFS -----    
     # solution_path = []
@@ -417,13 +472,7 @@ if __name__ == "__main__":
     #     print("Can't find a way to eliminate all blocks")
     # ----- END -----
 
-    
-    
-    
-
-
     # init_state = problem.init_node.state
-    
 
 
     # ----- DEBUG -----
@@ -436,8 +485,6 @@ if __name__ == "__main__":
     # all_turn_target = problem.findPath(1, problem.poslist[1][0], init_state)
 
     # block_pairs = problem.actions(init_state)
-
-
 
 
     # ----- DEBUG -----

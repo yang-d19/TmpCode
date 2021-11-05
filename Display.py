@@ -39,7 +39,7 @@ class PaintSpace(QWidget):
         # 每秒刷新一次绘图区域
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refreshState)
-        self.timer.start(1500)
+        self.timer.start(1000)
 
         self.initUI()
 

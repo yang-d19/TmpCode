@@ -1,6 +1,8 @@
 import numpy as np
 import math
 import random
+from utils import *
+from heapq import *
 
 # A = np.zeros((3, 5))
 # print(A)
@@ -8,12 +10,34 @@ import random
 # for i in range(4, 9):
 #     print(i)
 
+def list2str(state):
+    return tuple(np.array(state).flatten())
+
+
 if __name__ == "__main__":
 
-    a = [(1, 2), (3, 4), (5, 6)]
-    a.pop(a.index((1, 2)))
-    print(a)
+    state = np.matrix([[1, 2, 3], [5, 6, 7]])
+    print(list2str(state))
 
+    # a = [(1, 2), (3, 4), (5, 6)]
+    # a.pop(a.index((1, 2)))
+    # print(a)
+
+    # a = PriorityQueue(1, -3, 9, 4, 6, -1, 12, 4)
+
+    # for i in range(5):
+    #     print(a.pop())
+
+    # heap = [1, 0, 9, 13, -4, 5, 15, -6]
+    # heapify(heap)
+
+    # for i in range(4):
+    #     print(heappop(heap))
+    
+    # print(heap)
+
+
+    
 
     # A = np.zeros((3, 4))
     # print(A)
